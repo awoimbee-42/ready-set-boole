@@ -1,4 +1,4 @@
-use super::adder;
+use super::ex00_adder::adder;
 
 /// Multiply `a` with each bit of `b` and `add` all the partial products.
 pub fn multiplier(a: u32, b: u32) -> u32 {
@@ -25,5 +25,9 @@ mod test {
                 assert_eq!(multiplier(i, j), i * j);
             }
         }
+        assert_eq!(
+            multiplier(std::u32::MAX, std::u32::MAX),
+            std::u32::MAX.wrapping_mul(std::u32::MAX)
+        );
     }
 }

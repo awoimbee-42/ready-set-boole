@@ -1,15 +1,7 @@
-use num::{Integer, Unsigned};
-use std::ops::{BitAnd, BitXor, Shl};
-
-pub fn adder<
-    T: Unsigned + Integer + BitXor<Output = T> + BitAnd<Output = T> + Copy + Shl<Output = T>,
->(
-    a: T,
-    b: T,
-) -> T {
+pub fn adder(a: u32, b: u32) -> u32 {
     let res = a ^ b;
-    let carry = (a & b) << T::one();
-    if carry == T::zero() {
+    let carry = (a & b) << 1;
+    if carry == 0 {
         res
     } else {
         adder(res, carry)
@@ -27,5 +19,9 @@ mod test {
                 assert_eq!(adder(i, j), i + j);
             }
         }
+        assert_eq!(
+            adder(std::u32::MAX, std::u32::MAX),
+            std::u32::MAX.wrapping_add(std::u32::MAX)
+        );
     }
 }
