@@ -3,7 +3,7 @@ mod ex01_multiplier;
 mod ex02_gray_code;
 mod ex03_boolean_evaluation;
 mod ex04_truth_table;
-mod ex05_rewrite_rules;
+mod ex05_negation_normal_form;
 
 fn main() {
     println!("1+2={}", ex00_adder::adder(1, 2));
