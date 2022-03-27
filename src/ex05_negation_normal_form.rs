@@ -1,167 +1,170 @@
-// DOES NOT WORK
-
-enum NodeValue {
-    Op(char),
-    Val(char)
-}
-
 #[derive(Debug, Clone)]
-struct Node {
-    left: Option<Box<Node>>,
-    right: Option<Box<Node>>,
-    val: char
+struct NodeBis {
+    children: Option<[Box<Self>; 2]>,
+    neg: bool,
+    val: char,
 }
 
-impl std::fmt::Display for Node {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> { 
-        if let Some(node) = self.left.as_ref() {
-            node.fmt(f)?;
-        } if let Some(node) = self.right.as_ref() {
-            node.fmt(f)?;
+impl std::fmt::Display for NodeBis {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        if let Some(children) = &self.children {
+            children[0].fmt(f)?;
+            children[1].fmt(f)?;
         }
         write!(f, "{}", self.val)?;
-
+        if self.neg {
+            write!(f, "!")?;
+        }
         Ok(())
     }
 }
 
-impl Node {
-    fn childless(val: char) -> Self {
-        Self {
-            left:None,
-            right: None,
-            val
-        }
+impl NodeBis {
+    fn new(children: Option<[Box<Self>; 2]>, neg: bool, val: char) -> Self {
+        NodeBis { children, neg, val }
     }
 }
 
-fn parse(s: &str) -> Node {
-    let mut n = Node::childless(s.chars().last().unwrap());
-    parse_inner(&s[..s.len()-1], &mut n);
-    n   
-}
+fn inner_parse_bis(mut s: &str) -> (Box<NodeBis>, &str) {
+    let mut val = *s.as_bytes().last().unwrap() as char;
+    s = &s[..s.len() - 1];
+    let mut neg = false;
 
-fn parse_inner<'a>(s: &'a str, n: &mut Node) -> &'a str {
-    let val = n.val;
-    //let raw_val = s.chars().last().unwrap();
-    if val.is_alphanumeric() || s.is_empty() {
-        // set val to raw_val
-        return s; // rest of string
-    } 
-    else if val == '!' {
-        let mut newN = Box::new(Node::childless(s.chars().last().unwrap()));
-        n.left = Some(newN);
-        return parse_inner(&s[..s.len()-1], &mut n.left.as_mut().unwrap());
+    while val == '!' {
+        val = *s.as_bytes().last().unwrap() as char;
+        s = &s[..s.len() - 1];
+        neg = !neg;
     }
-    else {
-        let mut newN = Box::new(Node::childless(s.chars().last().unwrap()));
-        n.right = Some(newN);
-        let s = parse_inner(&s[..s.len()-1], &mut n.right.as_mut().unwrap());
-        let mut newN = Box::new(Node::childless(s.chars().last().unwrap()));
-        n.left = Some(newN);
-        let s = parse_inner(&s[..s.len()-1], &mut n.left.as_mut().unwrap());
-        return s;
+
+    if val.is_alphanumeric() {
+        // println!("is alphanum: {} ({})", val, s);
+        return (Box::new(NodeBis::new(None, neg, val)), s);
+    } else {
+        // println!("parsing children of `{}`", s);
+
+        let right = inner_parse_bis(s);
+        let left = inner_parse_bis(right.1);
+
+        let node = NodeBis::new(Some([left.0, right.0]), neg, val);
+
+        return (Box::new(node), left.1);
     }
 }
 
+fn parse_bis(s: &str) -> NodeBis {
+    let res = inner_parse_bis(s);
+    assert!(res.1.is_empty());
+    *res.0
+}
 
 pub fn negation_normal_form(formula: &str) -> String {
-    let mut tree = parse(formula);
-    println!("{}", tree);
+    let mut tree = parse_bis(formula);
+
+    // println!("{}", tree);
     check_tree(&mut tree);
-    format!("{}",tree)
+    format!("{}", tree)
 }
 
 // check tree
 // recursice check for wrong operators ! > =
-fn check_tree(mut n: &mut Node) -> &mut Node {
+fn check_tree(mut n: &mut NodeBis) -> &mut NodeBis {
+    println!("parsed input: {}", n);
     rm_equivalences(n);
+    println!("after rm_equivalences: {}", n);
     rm_material_conditions(n);
+    println!("after rm_material_conditions: {}", n);
+    // rm_distributivity(n);
+    // println!("after rm_distributivity: {}", n);
     rm_negation(n);
-    // second: negate
+    println!("after rm_negation: {}", n);
+
     n
 }
 
-fn rm_material_conditions(n: &mut Node) {
+fn rm_material_conditions(n: &mut NodeBis) {
     if n.val == '>' {
-        n.left = Some(Box::new(Node {
-            val: '!', 
-            left: n.left.clone(), 
-            right: None
-        }));
+        let children_ref = n.children.as_mut().unwrap();
         n.val = '|';
+        children_ref[0].neg = !children_ref[0].neg;
     }
-    if let Some(n) = n.left.as_mut(){
-        rm_material_conditions(n);
+    if let Some(children) = &mut n.children {
+        rm_material_conditions(&mut children[0]);
+        rm_material_conditions(&mut children[1]);
     }
-    if let Some(n) = n.right.as_mut(){
-        rm_material_conditions(n);
-    }
-
 }
 
-fn rm_equivalences(n: &mut Node) {
+fn rm_equivalences(n: &mut NodeBis) {
     if n.val == '=' {
-        let left_left = n.left.clone().unwrap();
-        let left_right = n.right.clone().unwrap().clone();
-        let right_left = n.right.clone().unwrap().clone();
-        let right_right = n.left.clone().unwrap().clone();
-        n.left = Some(Box::new(Node {val: '>', left: Some(left_left), right: Some(left_right)}));
-        n.right = Some(Box::new(Node {val: '>', left: Some(right_left), right: Some(right_right)}));
+        let children_ref = n.children.as_mut().unwrap();
+        let children_clone = children_ref.clone();
+        let inversed_children = [children_clone[1].clone(), children_clone[0].clone()];
         n.val = '&';
+        children_ref[0] = Box::new(NodeBis::new(Some(children_clone), false, '>'));
+        children_ref[1] = Box::new(NodeBis::new(Some(inversed_children), false, '>'));
     }
-    if let Some(n) = n.left.as_mut(){
-        rm_equivalences(n);
-    }
-    if let Some(n) = n.right.as_mut(){
-        rm_equivalences(n);
+    if let Some(children) = &mut n.children {
+        rm_equivalences(&mut children[0]);
+        rm_equivalences(&mut children[1]);
     }
 }
 
-fn rm_negation(n: &mut Node) {
-    println!("negate: {}", n);
-    if n.val == '!' {
-        //let left = n.left.as_mut().unwrap();
-        // println!("left_val: {}", left.val);
-        match n.left.as_ref().unwrap().val {
-            '!' => {
-                *n = *n.left.as_ref().unwrap().left.clone().unwrap();
-            },
-            '&' => {
-                println!("befor & transform {:?}", Some(Box::new(Node {val: '!', left: n.left.as_ref().unwrap().right.clone(), right: None})));
-                println!("ireal before {:?}", n);
-                n.left = Some(Box::new(Node {val: '!', left: n.left.as_ref().unwrap().left.clone(), right: None}));
-                n.right = Some(Box::new(Node {val: '!', left: n.left.as_ref().unwrap().right.clone(), right: None}));
-                n.val = '|';
-                println!("after & transform {:?}", n);
-            },
-            '|' => {
-                n.left = Some(Box::new(Node {val: '!', left: n.left.as_ref().unwrap().left.clone(), right: None}));
-                n.right = Some(Box::new(Node {val: '!', left: n.left.as_ref().unwrap().right.clone(), right: None}));
-                n.val = '&'; 
-            },
-            _ => {}
+fn rm_negation(n: &mut NodeBis) {
+    // println!("negate: {}", n);
+    if n.neg {
+        if let Some(children_ref) = n.children.as_mut() {
+            match n.val {
+                '&' => {
+                    // De Morgan’s laws
+                    children_ref[0].neg = !children_ref[0].neg;
+                    children_ref[1].neg = !children_ref[1].neg;
+                    n.val = '|';
+                    n.neg = !n.neg;
+                }
+                '|' => {
+                    // De Morgan’s laws
+                    children_ref[0].neg = !children_ref[0].neg;
+                    children_ref[1].neg = !children_ref[1].neg;
+                    n.val = '&';
+                    n.neg = !n.neg;
+                }
+                _ => {
+                    println!("can't propagate negation on: {}", n.val);
+                }
+            }
         }
     }
-    if let Some(n) = n.left.as_mut(){
-        rm_negation(n);
-    }
-    if let Some(n) = n.right.as_mut(){
-        rm_negation(n);
+    if let Some(children) = &mut n.children {
+        rm_negation(&mut children[0]);
+        rm_negation(&mut children[1]);
     }
 }
+fn rm_distributivity(n: &mut NodeBis) {
+    if let Some(children_ref) = n.children.as_mut() {
+        if n.val == '|' && children_ref[1].val == '&' {
+            // A OR (B AND C) => (A OR B) AND (A OR C)
+            n.val = '&';
+            let b_c = children_ref[1].children.as_mut().unwrap().clone();
+            let a_b = [children_ref[0].clone(), b_c[0].clone()];
+            let a_c = [children_ref[0].clone(), b_c[1].clone()];
 
-/// negate tree when ! 
-// fn negate_tree(n: &mut Node) -> Node {
-//     if n.val == '!' {
-//         return n.left;
-//     } 
-// }
-// AB!>C=!
-// fix = 
+            children_ref[0] = Box::new(NodeBis::new(Some(a_b), false, '|'));
+            children_ref[1] = Box::new(NodeBis::new(Some(a_c), false, '|'));
+        } else if n.val == '&' && children_ref[1].val == '|' {
+            // A AND (B OR C) => (A AND B) OR (A AND C)
+            n.val = '|';
+            let b_c = children_ref[1].children.as_mut().unwrap().clone();
+            let a_b = [children_ref[0].clone(), b_c[0].clone()];
+            let a_c = [children_ref[0].clone(), b_c[1].clone()];
 
-
-// fix >
+            children_ref[0] = Box::new(NodeBis::new(Some(a_b), false, '&'));
+            children_ref[1] = Box::new(NodeBis::new(Some(a_c), false, '&'));
+        }
+    }
+    if let Some(children) = &mut n.children {
+        rm_distributivity(&mut children[0]);
+        rm_distributivity(&mut children[1]);
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -169,10 +172,24 @@ mod tests {
 
     #[test]
     fn test() {
-        assert_eq!(negation_normal_form("AB>"), "A!B|");
+        // let t = &mut parse_bis("AB&A!B!&|");
+        // rm_distributivity(t);
+        // assert_eq!(format!("{}", t), "A!B|B!A|&");
+        // -> "AB&A!|AB&B!|&"
+
+        // "A!B|B!A|&" => "AB&A!B!&|" ?
+
+        // parsing
         assert_eq!(negation_normal_form("A!!"), "A");
         assert_eq!(negation_normal_form("A!!!"), "A!");
+
+        // normal form
         assert_eq!(negation_normal_form("AB&!"), "A!B!|");
+        assert_eq!(negation_normal_form("AB|!"), "A!B!&");
+        assert_eq!(negation_normal_form("AB>"), "A!B|");
+        assert_eq!(negation_normal_form("AB="), "AB&A!B!&|");
+        assert_eq!(negation_normal_form("AB|C&!"), "A!B!&C!|");
+
         // assert_eq!(negation_normal_form("A!B!CD|&!&CD&&!"), "A!B!|C!D!||");
     }
 }
