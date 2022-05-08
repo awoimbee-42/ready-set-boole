@@ -4,17 +4,17 @@ use anyhow::Result;
 
 use super::ex03_boolean_evaluation;
 
-fn generate_truth_table(formula: &str) -> Result<String> {
+pub fn generate_truth_table(formula: &str) -> Result<String> {
     let mut output = String::new();
     let mut vars = formula
-        .chars()
+        .bytes()
         .filter(|token| token.is_ascii_alphabetic())
         .collect::<Vec<_>>();
     vars.sort_unstable();
     vars.dedup();
 
-    for v in vars.iter() {
-        write!(output, "| {} ", v)?;
+    for &v in vars.iter() {
+        write!(output, "| {} ", v as char)?;
     }
     writeln!(output, "| = |")?;
     for _ in vars.iter() {
@@ -23,18 +23,22 @@ fn generate_truth_table(formula: &str) -> Result<String> {
     writeln!(output, "|---|")?;
 
     for i in 0..(2_u32.pow(vars.len() as u32)) {
-        let i_str = format!("{:0width$b}", i, width = vars.len());
+        let var_values = format!("{:0width$b}", i, width = vars.len()).into_bytes();
+        assert!(var_values.len() == vars.len()); // enable compile optimization
         let mut formula_copy = formula.to_string();
-
-        for (index, var) in vars.iter().enumerate() {
-            formula_copy =
-                formula_copy.replace(*var, &i_str.chars().nth(index).unwrap().to_string());
+        unsafe {
+            for c in formula_copy.as_bytes_mut().iter_mut() {
+                for (var, &val) in vars.iter().zip(var_values.iter()) {
+                    if *c == *var {
+                        *c = val;
+                    }
+                }
+            }
         }
-
         let result = ex03_boolean_evaluation::checked_eval_formula(&formula_copy)?;
 
-        for c in i_str.chars() {
-            write!(output, "| {} ", c)?;
+        for &c in var_values.iter() {
+            write!(output, "| {} ", c as char)?;
         }
         writeln!(output, "| {} |", result as u32)?;
     }

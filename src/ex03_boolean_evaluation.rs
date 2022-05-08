@@ -26,16 +26,18 @@ pub fn checked_eval_formula(formula: &str) -> Result<bool> {
             b'0' | b'1' => val_stack.push((val - b'0') != 0),
             b'!' => {
                 // `!` is the only one that operates on a single value
-                let a = val_stack.pop().ok_or(anyhow!("Missing value for `!`"))?;
+                let a = val_stack
+                    .pop()
+                    .ok_or_else(|| anyhow!("Missing value for `!`"))?;
                 val_stack.push(!a);
             }
             b'&' | b'|' | b'^' | b'>' | b'=' => {
                 let b = val_stack
                     .pop()
-                    .ok_or(anyhow!("Missing 2 values for operator {val}"))?;
+                    .ok_or_else(|| anyhow!("Missing 2 values for operator {val}"))?;
                 let a = val_stack
                     .pop()
-                    .ok_or(anyhow!("Missing 1 value for operator {val}"))?;
+                    .ok_or_else(|| anyhow!("Missing 1 value for operator {val}"))?;
                 val_stack.push(eval(a, b, val));
             }
             _ => return Err(anyhow!("Invalid character: {}", val)),
