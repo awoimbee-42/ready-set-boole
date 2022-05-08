@@ -15,4 +15,8 @@ fn main() {
     );
     println!("truth_table(\"ABC&A|&\"):");
     ex04_truth_table::print_truth_table("ABC&A|&");
+    println!(
+        "NNF('AB&A|!&')={}",
+        ex05_negation_normal_form::negation_normal_form("AB&A|!&")
+    );
 }
