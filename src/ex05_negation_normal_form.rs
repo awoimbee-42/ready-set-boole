@@ -1,17 +1,19 @@
+use anyhow::{anyhow, Result};
+
 #[derive(Debug, Clone)]
-struct NodeBis {
+struct Node {
     children: Option<[Box<Self>; 2]>,
     neg: bool,
-    val: char,
+    val: u8,
 }
 
-impl std::fmt::Display for NodeBis {
+impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         if let Some(children) = &self.children {
             children[0].fmt(f)?;
             children[1].fmt(f)?;
         }
-        write!(f, "{}", self.val)?;
+        write!(f, "{}", self.val as char)?;
         if self.neg {
             write!(f, "!")?;
         }
@@ -20,11 +22,11 @@ impl std::fmt::Display for NodeBis {
 }
 
 struct NodeIterator<'a> {
-    stack: Vec<&'a NodeBis>,
+    stack: Vec<&'a Node>,
 }
 
 impl<'a> Iterator for NodeIterator<'a> {
-    type Item = &'a NodeBis;
+    type Item = &'a Node;
     fn next(&mut self) -> Option<Self::Item> {
         let node = self.stack.pop()?;
         if let Some(children) = &node.children {
@@ -35,57 +37,66 @@ impl<'a> Iterator for NodeIterator<'a> {
     }
 }
 
-impl<'a> IntoIterator for &'a NodeBis {
-    type Item = &'a NodeBis;
+impl<'a> IntoIterator for &'a Node {
+    type Item = &'a Node;
     type IntoIter = NodeIterator<'a>;
     fn into_iter(self) -> Self::IntoIter {
         NodeIterator { stack: vec![self] }
     }
 }
 
-impl NodeBis {
-    fn new(children: Option<[Box<Self>; 2]>, neg: bool, val: char) -> Self {
-        NodeBis { children, neg, val }
+impl Node {
+    fn new(children: Option<[Box<Self>; 2]>, neg: bool, val: u8) -> Self {
+        Node { children, neg, val }
     }
 }
 
-fn inner_parse_bis(mut s: &str) -> (Box<NodeBis>, &str) {
-    let mut val = *s.as_bytes().last().unwrap() as char;
+fn inner_parse(mut s: &[u8]) -> Result<(Box<Node>, &[u8])> {
+    let mut val = *s.last().unwrap();
     s = &s[..s.len() - 1];
     let mut neg = false;
 
-    while val == '!' {
-        val = *s.as_bytes().last().unwrap() as char;
+    while val == b'!' {
+        val = *s
+            .last()
+            .ok_or_else(|| anyhow!("invalid input (invalid negation)"))?;
         s = &s[..s.len() - 1];
         neg = !neg;
     }
 
-    if val.is_alphanumeric() {
-        (Box::new(NodeBis::new(None, neg, val)), s)
-    } else {
-        let right = inner_parse_bis(s);
-        let left = inner_parse_bis(right.1);
+    match val {
+        b'&' | b'^' | b'|' | b'>' | b'=' => {
+            let right = inner_parse(s)?;
+            let left = inner_parse(right.1)?;
 
-        let node = NodeBis::new(Some([left.0, right.0]), neg, val);
+            let node = Node::new(Some([left.0, right.0]), neg, val);
 
-        (Box::new(node), left.1)
+            Ok((Box::new(node), left.1))
+        }
+        b'A'..=b'Z' => Ok((Box::new(Node::new(None, neg, val)), s)),
+        _ => Err(anyhow!("invalid input (invalid char `{}`)", val as char)),
     }
 }
 
-fn parse_bis(s: &str) -> NodeBis {
-    let res = inner_parse_bis(s);
+fn parse(s: &str) -> Result<Node> {
+    let res = inner_parse(s.as_bytes())?;
     assert!(res.1.is_empty());
-    *res.0
+    Ok(*res.0)
+}
+
+pub fn nnf(formula: &str) -> Result<String> {
+    let mut tree = parse(formula)?;
+
+    recurse_tree_nnf(&mut tree);
+    Ok(tree.to_string())
 }
 
 pub fn negation_normal_form(formula: &str) -> String {
-    let mut tree = parse_bis(formula);
-
-    recurse_tree_nnf(&mut tree);
-    tree.to_string()
+    nnf(formula).unwrap()
 }
 
-fn recurse_tree_nnf(n: &mut NodeBis) {
+fn recurse_tree_nnf(n: &mut Node) {
+    rm_exclusive_or(n);
     rm_equivalence(n);
     rm_material_conditions(n);
     rm_negation(n);
@@ -96,44 +107,55 @@ fn recurse_tree_nnf(n: &mut NodeBis) {
     }
 }
 
-fn rm_material_conditions(n: &mut NodeBis) {
-    if n.val == '>' {
+fn rm_material_conditions(n: &mut Node) {
+    if n.val == b'>' {
         let children_ref = n.children.as_mut().unwrap();
-        n.val = '|';
+        n.val = b'|';
         children_ref[0].neg = !children_ref[0].neg;
     }
 }
 
-fn rm_equivalence(n: &mut NodeBis) {
-    if n.val == '=' {
+fn rm_equivalence(n: &mut Node) {
+    if n.val == b'=' {
         let children_ref = n.children.as_mut().unwrap();
         let children_clone = children_ref.clone();
         let inversed_children = [children_clone[1].clone(), children_clone[0].clone()];
-        n.val = '&';
-        children_ref[0] = Box::new(NodeBis::new(Some(children_clone), false, '>'));
-        children_ref[1] = Box::new(NodeBis::new(Some(inversed_children), false, '>'));
+        n.val = b'&';
+        children_ref[0] = Box::new(Node::new(Some(children_clone), false, b'>'));
+        children_ref[1] = Box::new(Node::new(Some(inversed_children), false, b'>'));
     }
 }
 
-fn rm_negation(n: &mut NodeBis) {
+fn rm_negation(n: &mut Node) {
     if n.neg {
         if let Some(children_ref) = n.children.as_mut() {
             match n.val {
-                '&' => {
+                b'&' => {
                     children_ref[0].neg = !children_ref[0].neg;
                     children_ref[1].neg = !children_ref[1].neg;
-                    n.val = '|';
+                    n.val = b'|';
                     n.neg = !n.neg;
                 }
-                '|' => {
+                b'|' => {
                     children_ref[0].neg = !children_ref[0].neg;
                     children_ref[1].neg = !children_ref[1].neg;
-                    n.val = '&';
+                    n.val = b'&';
                     n.neg = !n.neg;
                 }
                 _ => {}
             }
         }
+    }
+}
+
+fn rm_exclusive_or(n: &mut Node) {
+    if n.val == b'^' {
+        let children_ref = n.children.as_mut().unwrap();
+        let a = children_ref[0].clone();
+        let b = children_ref[1].clone();
+        n.val = b'&';
+        children_ref[0] = Box::new(Node::new(Some([a.clone(), b.clone()]), false, b'|'));
+        children_ref[1] = Box::new(Node::new(Some([a, b]), true, b'&'));
     }
 }
 
@@ -148,12 +170,12 @@ mod tests {
     /// And that the truth table of the resulting formula matches
     fn assert_correct_nnf(formula: &str) -> String {
         let nnf = negation_normal_form(formula);
-        let parsed_nnf = parse_bis(&nnf);
+        let parsed_nnf = parse(&nnf);
         for n in parsed_nnf.into_iter() {
-            let is_value = n.val.is_alphanumeric();
+            let is_value = n.val.is_ascii_alphanumeric();
             assert!(!n.neg || is_value, "In NNF, only values can be negated");
             assert!(
-                is_value || matches!(n.val, '&' | '|'),
+                is_value || matches!(n.val, b'&' | b'|'),
                 "In NNF, only & and | are allowed"
             );
         }
@@ -168,6 +190,7 @@ mod tests {
     fn parsing() {
         assert_eq!(negation_normal_form("A!!"), "A");
         assert_eq!(negation_normal_form("A!!!"), "A!");
+        assert!(nnf("óë&³&!!!").is_err());
     }
 
     #[test]
@@ -188,10 +211,10 @@ mod tests {
 
     #[test]
     fn exclusive_or() {
-        assert_eq!("AB^", "AB|A!B!|&");
-        assert_eq!("A!B^", "A!B|AB!|&");
-        assert_eq!("AB!^", "AB!|A!B|&");
-        assert_eq!("A!B!^", "A!B!|AB|&");
+        assert_eq!(negation_normal_form("AB^"), "AB|A!B!|&");
+        assert_eq!(negation_normal_form("A!B^"), "A!B|AB!|&");
+        assert_eq!(negation_normal_form("AB!^"), "AB!|A!B|&");
+        assert_eq!(negation_normal_form("A!B!^"), "A!B!|AB|&");
     }
 
     #[test]
@@ -199,7 +222,6 @@ mod tests {
         assert_eq!(assert_correct_nnf("AB|C&!"), "A!B!&C!|");
         assert_correct_nnf("A!B&!C&!D!&!E!&!");
         assert_correct_nnf("A!B&!C&!D!&!E!&!A>B>!C>!!!F=G!&");
-        assert_correct_nnf("AB=C=A=E=A=A=A=A=D=B=B=B=");
-        // assert_correct_nnf("AB=C=A=E=A=A=A=A=D=B=B=B=C=C=C=D=D=D=E=E=E=");
+        assert_correct_nnf("AB=C=A=E=A=A=A=A=D=B=B=B=A^B&!C>");
     }
 }
