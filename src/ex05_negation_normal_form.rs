@@ -1,4 +1,18 @@
-use anyhow::{anyhow, Result};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum MyError {
+    #[error("invalid character: '{0}'")]
+    InvalidChar(char),
+    #[error("invalid operator: '{0}'")]
+    InvalidOperator(char),
+    // #[error("missing value for operator: {0}")]
+    // MissingValue(char),
+    // #[error("formula returns multiple values")]
+    // TooManyValues,
+    #[error("premature end of formula")]
+    Eof,
+}
 
 #[derive(Debug, Clone)]
 struct Node {
@@ -51,15 +65,13 @@ impl Node {
     }
 }
 
-fn inner_parse(mut s: &[u8]) -> Result<(Box<Node>, &[u8])> {
-    let mut val = *s.last().unwrap();
+fn inner_parse(mut s: &[u8]) -> Result<(Box<Node>, &[u8]), MyError> {
+    let mut val = *s.last().ok_or(MyError::Eof)?;
     s = &s[..s.len() - 1];
     let mut neg = false;
 
     while val == b'!' {
-        val = *s
-            .last()
-            .ok_or_else(|| anyhow!("invalid input (invalid negation)"))?;
+        val = *s.last().ok_or(MyError::InvalidOperator('!'))?;
         s = &s[..s.len() - 1];
         neg = !neg;
     }
@@ -74,17 +86,17 @@ fn inner_parse(mut s: &[u8]) -> Result<(Box<Node>, &[u8])> {
             Ok((Box::new(node), left.1))
         }
         b'A'..=b'Z' => Ok((Box::new(Node::new(None, neg, val)), s)),
-        _ => Err(anyhow!("invalid input (invalid char `{}`)", val as char)),
+        _ => Err(MyError::InvalidChar(val as char)),
     }
 }
 
-fn parse(s: &str) -> Result<Node> {
+fn parse(s: &str) -> Result<Node, MyError> {
     let res = inner_parse(s.as_bytes())?;
-    assert!(res.1.is_empty());
+    debug_assert!(res.1.is_empty());
     Ok(*res.0)
 }
 
-pub fn nnf(formula: &str) -> Result<String> {
+pub fn nnf(formula: &str) -> Result<String, MyError> {
     let mut tree = parse(formula)?;
 
     recurse_tree_nnf(&mut tree);

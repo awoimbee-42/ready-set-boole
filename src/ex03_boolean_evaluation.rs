@@ -1,4 +1,14 @@
-use anyhow::{anyhow, Result};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum ParsingError {
+    #[error("invalid character: '{0}'")]
+    InvalidChar(char),
+    #[error("missing value for operator: {0}")]
+    MissingValue(char),
+    #[error("formula returns multiple values")]
+    TooManyValues,
+}
 
 fn eval(a: bool, b: bool, op: u8) -> bool {
     match op {
@@ -18,7 +28,7 @@ fn eval(a: bool, b: bool, op: u8) -> bool {
     }
 }
 
-pub fn checked_eval_formula(formula: &str) -> Result<bool> {
+pub fn checked_eval_formula(formula: &str) -> Result<bool, ParsingError> {
     let mut val_stack = Vec::new();
 
     for &val in formula.as_bytes() {
@@ -26,27 +36,25 @@ pub fn checked_eval_formula(formula: &str) -> Result<bool> {
             b'0' | b'1' => val_stack.push((val - b'0') != 0),
             b'!' => {
                 // `!` is the only one that operates on a single value
-                let a = val_stack
-                    .pop()
-                    .ok_or_else(|| anyhow!("Missing value for `!`"))?;
+                let a = val_stack.pop().ok_or(ParsingError::MissingValue('!'))?;
                 val_stack.push(!a);
             }
             b'&' | b'|' | b'^' | b'>' | b'=' => {
                 let b = val_stack
                     .pop()
-                    .ok_or_else(|| anyhow!("Missing 2 values for operator {val}"))?;
+                    .ok_or(ParsingError::MissingValue(val as char))?;
                 let a = val_stack
                     .pop()
-                    .ok_or_else(|| anyhow!("Missing 1 value for operator {val}"))?;
+                    .ok_or(ParsingError::MissingValue(val as char))?;
                 val_stack.push(eval(a, b, val));
             }
-            _ => return Err(anyhow!("Invalid character: {}", val)),
+            _ => return Err(ParsingError::InvalidChar(val as char)),
         }
     }
     if val_stack.len() == 1 {
         Ok(val_stack.pop().unwrap())
     } else {
-        Err(anyhow!("formula returns multiple values"))
+        Err(ParsingError::TooManyValues)
     }
 }
 

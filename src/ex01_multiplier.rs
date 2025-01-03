@@ -6,10 +6,10 @@ pub fn multiplier(a: u32, b: u32) -> u32 {
         return 0;
     }
     if b & 1 == 0 {
-        // add a * 0 + multiplier(...)
+        // add a[i] * 0 + multiplier(...)
         multiplier(a, b >> 1) << 1
     } else {
-        // add a * 1 + multiplier(...)
+        // add a[i] * 1 + multiplier(...)
         adder(a, multiplier(a, b >> 1) << 1)
     }
 }

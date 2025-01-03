@@ -1,10 +1,8 @@
 use std::fmt::Write;
 
-use anyhow::Result;
+use super::ex03_boolean_evaluation::{checked_eval_formula, ParsingError};
 
-use super::ex03_boolean_evaluation;
-
-pub fn generate_truth_table(formula: &str) -> Result<String> {
+pub fn generate_truth_table(formula: &str) -> Result<String, ParsingError> {
     let mut output = String::new();
     let mut vars = formula
         .bytes()
@@ -14,17 +12,17 @@ pub fn generate_truth_table(formula: &str) -> Result<String> {
     vars.dedup();
 
     for &v in vars.iter() {
-        write!(output, "| {} ", v as char)?;
+        write!(output, "| {} ", v as char).unwrap();
     }
-    writeln!(output, "| = |")?;
+    writeln!(output, "| = |").unwrap();
     for _ in vars.iter() {
-        write!(output, "|---")?;
+        write!(output, "|---").unwrap();
     }
-    writeln!(output, "|---|")?;
+    writeln!(output, "|---|").unwrap();
 
     for i in 0..(2_u32.pow(vars.len() as u32)) {
         let var_values = format!("{:0width$b}", i, width = vars.len()).into_bytes();
-        assert!(var_values.len() == vars.len()); // enable compile optimization
+        debug_assert!(var_values.len() == vars.len());
         let mut formula_copy = formula.to_string();
         unsafe {
             for c in formula_copy.as_bytes_mut().iter_mut() {
@@ -35,18 +33,21 @@ pub fn generate_truth_table(formula: &str) -> Result<String> {
                 }
             }
         }
-        let result = ex03_boolean_evaluation::checked_eval_formula(&formula_copy)?;
+        let result = checked_eval_formula(&formula_copy)?;
 
         for &c in var_values.iter() {
-            write!(output, "| {} ", c as char)?;
+            write!(output, "| {} ", c as char).unwrap();
         }
-        writeln!(output, "| {} |", result as u32)?;
+        writeln!(output, "| {} |", result as u32).unwrap();
     }
     Ok(output)
 }
 
 pub fn print_truth_table(formula: &str) {
-    print!("{}", generate_truth_table(formula).unwrap());
+    print!(
+        "{}",
+        generate_truth_table(formula).unwrap_or("(error)".to_string())
+    );
 }
 
 #[cfg(test)]
