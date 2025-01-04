@@ -1,110 +1,17 @@
-use thiserror::Error;
+use crate::bool_formula_ast::{MyError, Node, NodeValue};
 
-#[derive(Error, Debug)]
-pub enum MyError {
-    #[error("invalid character: '{0}'")]
-    InvalidChar(char),
-    #[error("invalid operator: '{0}'")]
-    InvalidOperator(char),
-    // #[error("missing value for operator: {0}")]
-    // MissingValue(char),
-    // #[error("formula returns multiple values")]
-    // TooManyValues,
-    #[error("premature end of formula")]
-    Eof,
-}
-
-#[derive(Debug, Clone)]
-struct Node {
-    children: Option<[Box<Self>; 2]>,
-    neg: bool,
-    val: u8,
-}
-
-impl std::fmt::Display for Node {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        if let Some(children) = &self.children {
-            children[0].fmt(f)?;
-            children[1].fmt(f)?;
-        }
-        write!(f, "{}", self.val as char)?;
-        if self.neg {
-            write!(f, "!")?;
-        }
-        Ok(())
-    }
-}
-
-struct NodeIterator<'a> {
-    stack: Vec<&'a Node>,
-}
-
-impl<'a> Iterator for NodeIterator<'a> {
-    type Item = &'a Node;
-    fn next(&mut self) -> Option<Self::Item> {
-        let node = self.stack.pop()?;
-        if let Some(children) = &node.children {
-            self.stack.push(&children[0]);
-            self.stack.push(&children[1]);
-        }
-        Some(node)
-    }
-}
-
-impl<'a> IntoIterator for &'a Node {
-    type Item = &'a Node;
-    type IntoIter = NodeIterator<'a>;
-    fn into_iter(self) -> Self::IntoIter {
-        NodeIterator { stack: vec![self] }
-    }
-}
-
-impl Node {
-    fn new(children: Option<[Box<Self>; 2]>, neg: bool, val: u8) -> Self {
-        Node { children, neg, val }
-    }
-}
-
-fn inner_parse(mut s: &[u8]) -> Result<(Box<Node>, &[u8]), MyError> {
-    let mut val = *s.last().ok_or(MyError::Eof)?;
-    s = &s[..s.len() - 1];
-    let mut neg = false;
-
-    while val == b'!' {
-        val = *s.last().ok_or(MyError::InvalidOperator('!'))?;
-        s = &s[..s.len() - 1];
-        neg = !neg;
-    }
-
-    match val {
-        b'&' | b'^' | b'|' | b'>' | b'=' => {
-            let right = inner_parse(s)?;
-            let left = inner_parse(right.1)?;
-
-            let node = Node::new(Some([left.0, right.0]), neg, val);
-
-            Ok((Box::new(node), left.1))
-        }
-        b'A'..=b'Z' => Ok((Box::new(Node::new(None, neg, val)), s)),
-        _ => Err(MyError::InvalidChar(val as char)),
-    }
-}
-
-fn parse(s: &str) -> Result<Node, MyError> {
-    let res = inner_parse(s.as_bytes())?;
-    debug_assert!(res.1.is_empty());
-    Ok(*res.0)
-}
-
-pub fn nnf(formula: &str) -> Result<String, MyError> {
-    let mut tree = parse(formula)?;
+/// Concrete definition of `negation_normal_form` with error handling.
+pub fn nnf(formula: &str) -> Result<Node, MyError> {
+    let mut tree = Node::parse(formula)?;
 
     recurse_tree_nnf(&mut tree);
-    Ok(tree.to_string())
+    Ok(tree)
 }
 
 pub fn negation_normal_form(formula: &str) -> String {
-    nnf(formula).unwrap()
+    nnf(formula)
+        .map(|n| n.to_string())
+        .unwrap_or_else(|e| e.to_string())
 }
 
 fn recurse_tree_nnf(n: &mut Node) {
@@ -113,61 +20,55 @@ fn recurse_tree_nnf(n: &mut Node) {
     rm_material_conditions(n);
     rm_negation(n);
 
-    if let Some(children) = &mut n.children {
+    if let NodeValue::Operator((_, children)) = &mut n.val {
         recurse_tree_nnf(&mut children[0]);
         recurse_tree_nnf(&mut children[1]);
     }
 }
 
 fn rm_material_conditions(n: &mut Node) {
-    if n.val == b'>' {
-        let children_ref = n.children.as_mut().unwrap();
-        n.val = b'|';
-        children_ref[0].neg = !children_ref[0].neg;
+    if let NodeValue::Operator((op @ '>', children)) = &mut n.val {
+        *op = '|';
+        children[0].neg ^= true;
     }
 }
 
 fn rm_equivalence(n: &mut Node) {
-    if n.val == b'=' {
-        let children_ref = n.children.as_mut().unwrap();
-        let children_clone = children_ref.clone();
-        let inversed_children = [children_clone[1].clone(), children_clone[0].clone()];
-        n.val = b'&';
-        children_ref[0] = Box::new(Node::new(Some(children_clone), false, b'>'));
-        children_ref[1] = Box::new(Node::new(Some(inversed_children), false, b'>'));
+    if let NodeValue::Operator((op @ '=', children)) = &mut n.val {
+        *op = '&';
+        let mut children_bak = children.clone();
+        children[0] = Node::new(false, NodeValue::new_operator('>', children_bak.clone()));
+        children_bak.reverse();
+        children[1] = Node::new(false, NodeValue::new_operator('>', children_bak));
     }
 }
 
 fn rm_negation(n: &mut Node) {
     if n.neg {
-        if let Some(children_ref) = n.children.as_mut() {
-            match n.val {
-                b'&' => {
-                    children_ref[0].neg = !children_ref[0].neg;
-                    children_ref[1].neg = !children_ref[1].neg;
-                    n.val = b'|';
-                    n.neg = !n.neg;
-                }
-                b'|' => {
-                    children_ref[0].neg = !children_ref[0].neg;
-                    children_ref[1].neg = !children_ref[1].neg;
-                    n.val = b'&';
-                    n.neg = !n.neg;
-                }
-                _ => {}
+        match &mut n.val {
+            NodeValue::Operator((op @ '&', children)) => {
+                children[0].neg ^= true;
+                children[1].neg ^= true;
+                n.neg ^= true;
+                *op = '|';
             }
+            NodeValue::Operator((op @ '|', children)) => {
+                children[0].neg ^= true;
+                children[1].neg ^= true;
+                n.neg ^= true;
+                *op = '&';
+            }
+            _ => (),
         }
     }
 }
 
 fn rm_exclusive_or(n: &mut Node) {
-    if n.val == b'^' {
-        let children_ref = n.children.as_mut().unwrap();
-        let a = children_ref[0].clone();
-        let b = children_ref[1].clone();
-        n.val = b'&';
-        children_ref[0] = Box::new(Node::new(Some([a.clone(), b.clone()]), false, b'|'));
-        children_ref[1] = Box::new(Node::new(Some([a, b]), true, b'&'));
+    if let NodeValue::Operator((op @ '^', children)) = &mut n.val {
+        let children_bak = children.clone();
+        *op = '&';
+        children[0] = Node::new(false, NodeValue::new_operator('|', children_bak.clone()));
+        children[1] = Node::new(true, NodeValue::new_operator('&', children_bak));
     }
 }
 
@@ -182,27 +83,23 @@ mod tests {
     /// And that the truth table of the resulting formula matches
     fn assert_correct_nnf(formula: &str) -> String {
         let nnf = negation_normal_form(formula);
-        let parsed_nnf = parse(&nnf);
+        let parsed_nnf = Node::parse(&nnf);
         for n in parsed_nnf.into_iter() {
-            let is_value = n.val.is_ascii_alphanumeric();
-            assert!(!n.neg || is_value, "In NNF, only values can be negated");
-            assert!(
-                is_value || matches!(n.val, b'&' | b'|'),
-                "In NNF, only & and | are allowed"
-            );
+            match &n.val {
+                NodeValue::Operator((op, _)) => {
+                    assert!(!n.neg, "In NNF, only values can be negated");
+                    assert!(matches!(op, '&' | '|'), "In NNF, only & and | are allowed");
+                }
+                NodeValue::Variable(v) => {
+                    assert!(v.is_ascii_uppercase(), "Invalid variable: {v}");
+                }
+            }
         }
         assert_eq!(
             generate_truth_table(&nnf).unwrap(),
             generate_truth_table(formula).unwrap()
         );
         nnf
-    }
-
-    #[test]
-    fn parsing() {
-        assert_eq!(negation_normal_form("A!!"), "A");
-        assert_eq!(negation_normal_form("A!!!"), "A!");
-        assert!(nnf("óë&³&!!!").is_err());
     }
 
     #[test]
