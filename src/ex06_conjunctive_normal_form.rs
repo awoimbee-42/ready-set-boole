@@ -1,16 +1,34 @@
 use crate::bool_formula_ast::{MyError, Node};
-use crate::ex05_negation_normal_form::nnf;
+use crate::ex05_negation_normal_form::{
+    rm_equivalence, rm_exclusive_or, rm_material_conditions, rm_negation,
+};
 
 fn cnf(formula: &str) -> Result<Node, MyError> {
-    let as_nnf = nnf(formula)?;
+    // let mut as_nnf = nnf(formula)?;
 
-    Ok(as_nnf)
+    // as_nnf.recursive_edit(&mut |n| {
+    //     rm_exclusive_or(n);
+    //     rm_equivalence(n);
+    //     rm_material_conditions(n);
+    //     rm_negation(n);
+
+    // });
+
+    // Ok(as_nnf)
+    unimplemented!();
 }
 
 pub fn conjunctive_normal_form(formula: &str) -> String {
     cnf(formula)
-        .map(|n| n.as_string_operators_last())
+        .map(|n| n.to_string())
         .unwrap_or_else(|e| e.to_string())
+}
+
+fn distibutive_laws(n: &mut Node) {
+    // ⋀ == &
+    // ⋁ == |
+    // 4. (P⋁(Q⋀R))↔(P⋁Q)⋀(P⋁R)
+    // 5. (P⋀(Q⋁R))↔(P⋀Q)⋁(P⋀R)
 }
 
 // fn recurse_tree_cnf(n: &mut Node) {

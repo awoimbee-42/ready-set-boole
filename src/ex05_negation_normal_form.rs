@@ -4,7 +4,13 @@ use crate::bool_formula_ast::{MyError, Node, NodeValue};
 pub fn nnf(formula: &str) -> Result<Node, MyError> {
     let mut tree = Node::parse(formula)?;
 
-    recurse_tree_nnf(&mut tree);
+    tree.operator_edit(&mut |n| {
+        rm_exclusive_or(n);
+        rm_equivalence(n);
+        rm_material_conditions(n);
+        rm_negation(n);
+    });
+
     Ok(tree)
 }
 
@@ -14,26 +20,14 @@ pub fn negation_normal_form(formula: &str) -> String {
         .unwrap_or_else(|e| e.to_string())
 }
 
-fn recurse_tree_nnf(n: &mut Node) {
-    rm_exclusive_or(n);
-    rm_equivalence(n);
-    rm_material_conditions(n);
-    rm_negation(n);
-
-    if let NodeValue::Operator((_, children)) = &mut n.val {
-        recurse_tree_nnf(&mut children[0]);
-        recurse_tree_nnf(&mut children[1]);
-    }
-}
-
-fn rm_material_conditions(n: &mut Node) {
+pub fn rm_material_conditions(n: &mut Node) {
     if let NodeValue::Operator((op @ '>', children)) = &mut n.val {
         *op = '|';
         children[0].neg ^= true;
     }
 }
 
-fn rm_equivalence(n: &mut Node) {
+pub fn rm_equivalence(n: &mut Node) {
     if let NodeValue::Operator((op @ '=', children)) = &mut n.val {
         *op = '&';
         let mut children_bak = children.clone();
@@ -43,7 +37,8 @@ fn rm_equivalence(n: &mut Node) {
     }
 }
 
-fn rm_negation(n: &mut Node) {
+/// de morgans laws
+pub fn rm_negation(n: &mut Node) {
     if n.neg {
         match &mut n.val {
             NodeValue::Operator((op @ '&', children)) => {
@@ -63,7 +58,7 @@ fn rm_negation(n: &mut Node) {
     }
 }
 
-fn rm_exclusive_or(n: &mut Node) {
+pub fn rm_exclusive_or(n: &mut Node) {
     if let NodeValue::Operator((op @ '^', children)) = &mut n.val {
         let children_bak = children.clone();
         *op = '&';
@@ -75,7 +70,7 @@ fn rm_exclusive_or(n: &mut Node) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ex04_truth_table::generate_truth_table;
+    use crate::ex04_truth_table::TruthTable;
 
     /// returns the NNF of `formula`
     ///
@@ -93,11 +88,12 @@ mod tests {
                 NodeValue::Variable(v) => {
                     assert!(v.is_ascii_uppercase(), "Invalid variable: {v}");
                 }
+                NodeValue::Value(_) => (),
             }
         }
         assert_eq!(
-            generate_truth_table(&nnf).unwrap(),
-            generate_truth_table(formula).unwrap()
+            TruthTable::compute(formula).unwrap().to_string(),
+            TruthTable::compute(&nnf).unwrap().to_string()
         );
         nnf
     }

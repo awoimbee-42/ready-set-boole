@@ -9,9 +9,12 @@ mod ex05_negation_normal_form;
 mod ex06_conjunctive_normal_form;
 
 fn main() {
+    // Bitwise operations
     println!("1+2={}", ex00_adder::adder(1, 2));
     println!("3*2={}", ex01_multiplier::multiplier(3, 2));
     println!("gray(4)={}", ex02_gray_code::gray_code(4));
+
+    // Boolean evaluation
     let eval_formula_input = "010&1|&";
     println!(
         "eval({:?})={}",

@@ -36,8 +36,10 @@ pub fn checked_eval_formula(formula: &str) -> Result<bool, ParsingError> {
             b'0' | b'1' => val_stack.push((val - b'0') != 0),
             b'!' => {
                 // `!` is the only one that operates on a single value
-                let a = val_stack.pop().ok_or(ParsingError::MissingValue('!'))?;
-                val_stack.push(!a);
+                let a = val_stack
+                    .last_mut()
+                    .ok_or(ParsingError::MissingValue('!'))?;
+                *a ^= true;
             }
             b'&' | b'|' | b'^' | b'>' | b'=' => {
                 let b = val_stack
