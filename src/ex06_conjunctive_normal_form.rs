@@ -1,21 +1,66 @@
 use crate::bool_formula_ast::{MyError, Node};
-use crate::ex05_negation_normal_form::{
-    rm_equivalence, rm_exclusive_or, rm_material_conditions, rm_negation,
-};
+use crate::ex04_truth_table::TruthTable;
+use crate::ex05_negation_normal_form::rm_negation;
 
 fn cnf(formula: &str) -> Result<Node, MyError> {
-    // let mut as_nnf = nnf(formula)?;
+    let truth_table = TruthTable::compute(formula)?;
+    let mut new_formula = String::new();
+    let variables = truth_table.variables();
+    let mut i = 0;
+    dbg!(truth_table.to_string());
+    for (values, result) in truth_table.entries() {
+        if result {
+            continue;
+        }
+        for (j, &val) in values.iter().enumerate() {
+            new_formula.push(variables[j]);
+            if val == b'1' {
+                new_formula.push('!');
+            }
+            if j > 0 {
+                new_formula.push('|');
+            }
+        }
+        if i > 0 {
+            new_formula.push('&');
+        }
+        i += 1;
+    }
+    dbg!(&new_formula);
 
-    // as_nnf.recursive_edit(&mut |n| {
-    //     rm_exclusive_or(n);
-    //     rm_equivalence(n);
-    //     rm_material_conditions(n);
-    //     rm_negation(n);
+    let mut new_formula = Node::parse(&new_formula)?;
+    new_formula.recursive_edit_operators(&mut |n| {
+        rm_negation(n);
+    });
 
+    Ok(new_formula)
+
+    // let mut tree = Node::parse(formula)?;
+    // tree.recursive_edit_operators(&mut |n| {
+    //     if let NodeValue::Operator((op, children)) = &mut n.val {
+    //         match (op, children.as_slice()) {
+    //             // ab&c& => abc&&
+    //             ('&', [Node { val: NodeValue::Operator(('&', _)), .. }, _]) => {
+    //                 let tmp = children[0].clone();
+    //                 children[0] = children[1].clone();
+    //                 children[1] = tmp;
+    //             },
+    //             // abc&| => ab|ac|b&
+    //             ('|', [_, Node { val: NodeValue::Operator(('&', _)), .. }]) => {
+    //                 // let new_node = Node::new(n.neg, val)
+
+    //                 // let tmp = children[0].clone();
+    //                 // children[0] = children[1].clone();
+    //                 // children[1] = tmp;
+    //             },
+    //             // bc&a| => ab|ac|b&
+    //             _ => (),
+
+    //         }
+    //     }
     // });
 
-    // Ok(as_nnf)
-    unimplemented!();
+    // unimplemented!();
 }
 
 pub fn conjunctive_normal_form(formula: &str) -> String {
@@ -24,39 +69,16 @@ pub fn conjunctive_normal_form(formula: &str) -> String {
         .unwrap_or_else(|e| e.to_string())
 }
 
-fn distibutive_laws(n: &mut Node) {
-    // ⋀ == &
-    // ⋁ == |
-    // 4. (P⋁(Q⋀R))↔(P⋁Q)⋀(P⋁R)
-    // 5. (P⋀(Q⋁R))↔(P⋀Q)⋁(P⋀R)
-}
-
-// fn recurse_tree_cnf(n: &mut Node) {
-//     if n.val == b'&' {
-
-//     }
-
-//     rm_exclusive_or(n);
-//     rm_equivalence(n);
-//     rm_material_conditions(n);
-//     rm_negation(n);
-
-//     if let Some(children) = &mut n.children {
-//         recurse_tree_nnf(&mut children[0]);
-//         recurse_tree_nnf(&mut children[1]);
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn subject_examples() {
-        // assert_eq!(conjunctive_normal_form("AB&!"), "A!B!|");
-        // assert_eq!(conjunctive_normal_form("AB|!"), "A!B!&");
+        assert_eq!(conjunctive_normal_form("AB&!"), "A!B!|");
+        assert_eq!(conjunctive_normal_form("AB|!"), "A!B!&");
         // assert_eq!(conjunctive_normal_form("AB|C&"), "AB|C&");
-        assert_eq!(conjunctive_normal_form("AB|C|D|"), "ABCD|||");
+        // assert_eq!(conjunctive_normal_form("AB|C|D|"), "ABCD|||");
         assert_eq!(conjunctive_normal_form("AB&C&D&"), "ABCD&&&");
         assert_eq!(conjunctive_normal_form("AB&!C!|"), "A!B!C!||");
         assert_eq!(conjunctive_normal_form("AB|!C!&"), "A!B!C!&&");

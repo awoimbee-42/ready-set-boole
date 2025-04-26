@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -128,7 +127,8 @@ impl Node {
         match &mut self.val {
             NodeValue::Variable(c) => {
                 if var == *c {
-                    self.val = NodeValue::Value(value);
+                    self.val = NodeValue::Value(value ^ self.neg);
+                    self.neg = false;
                 }
             }
             NodeValue::Operator((op, children)) => {
@@ -222,13 +222,13 @@ impl Node {
         }
     }
 
-    pub fn operator_edit<F: FnMut(&mut Self)>(&mut self, f: &mut F) {
+    pub fn recursive_edit_operators<F: FnMut(&mut Self)>(&mut self, f: &mut F) {
         if let NodeValue::Operator(_) = self.val {
             f(self);
         }
         if let NodeValue::Operator((_, children)) = &mut self.val {
-            children[0].operator_edit(f);
-            children[1].operator_edit(f);
+            children[0].recursive_edit_operators(f);
+            children[1].recursive_edit_operators(f);
         }
     }
 
@@ -275,6 +275,7 @@ mod tests {
         assert_eq!(regurgitate("A!!"), "A");
         assert_eq!(regurgitate("A!!!"), "A!");
         assert!(Node::parse("óë&³&!!!").is_err());
+        assert_eq!(regurgitate("ABCD&&&"), "ABCD&&&");
     }
 
     #[test]
@@ -286,6 +287,9 @@ mod tests {
         partialy_evaluated.partial_evaluate('B', true);
         partialy_evaluated.partial_evaluate('C', true);
         partialy_evaluated.partial_evaluate('D', false);
-        assert_eq!(partialy_evaluated.evaluate().unwrap(), final_formula.evaluate().unwrap());
+        assert_eq!(
+            partialy_evaluated.evaluate().unwrap(),
+            final_formula.evaluate().unwrap()
+        );
     }
 }

@@ -7,6 +7,7 @@ mod ex03_boolean_evaluation;
 mod ex04_truth_table;
 mod ex05_negation_normal_form;
 mod ex06_conjunctive_normal_form;
+mod ex07_sat;
 
 fn main() {
     // Bitwise operations

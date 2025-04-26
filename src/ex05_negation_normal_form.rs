@@ -4,7 +4,7 @@ use crate::bool_formula_ast::{MyError, Node, NodeValue};
 pub fn nnf(formula: &str) -> Result<Node, MyError> {
     let mut tree = Node::parse(formula)?;
 
-    tree.operator_edit(&mut |n| {
+    tree.recursive_edit_operators(&mut |n| {
         rm_exclusive_or(n);
         rm_equivalence(n);
         rm_material_conditions(n);
@@ -92,8 +92,8 @@ mod tests {
             }
         }
         assert_eq!(
+            TruthTable::compute(&nnf).unwrap().to_string(),
             TruthTable::compute(formula).unwrap().to_string(),
-            TruthTable::compute(&nnf).unwrap().to_string()
         );
         nnf
     }

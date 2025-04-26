@@ -1,13 +1,12 @@
 use core::fmt;
-use std::{collections::HashMap, fmt::Write};
+use std::fmt::Write;
 
 use crate::bool_formula_ast::{MyError, Node};
-
 
 #[derive(Debug, Default, PartialEq)]
 pub struct TruthTable {
     variables: Vec<char>,
-    entries: Vec<bool>,
+    results: Vec<bool>,
 }
 
 fn recursive_truth_table_results(formula: &Node, vars: &[char]) -> Result<Vec<bool>, MyError> {
@@ -25,6 +24,30 @@ fn recursive_truth_table_results(formula: &Node, vars: &[char]) -> Result<Vec<bo
     Ok(result)
 }
 
+/// Iterator over truth table entries in the form:
+/// `([b'0', b'1', ...], true)`
+pub struct TruthTableEntriesIterator<'a> {
+    truth_table: &'a TruthTable,
+    i: usize,
+}
+
+impl Iterator for TruthTableEntriesIterator<'_> {
+    type Item = (Vec<u8>, bool);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = *self.truth_table.results.get(self.i)?;
+        let values = format!(
+            "{:0width$b}",
+            self.i,
+            width = self.truth_table.variables.len()
+        )
+        .into_bytes();
+        self.i += 1;
+
+        Some((values, result))
+    }
+}
+
 impl TruthTable {
     pub fn compute(formula: &str) -> Result<Self, MyError> {
         let mut vars = formula
@@ -39,8 +62,19 @@ impl TruthTable {
 
         Ok(Self {
             variables: vars,
-            entries: results,
+            results,
         })
+    }
+
+    pub fn variables(&self) -> &[char] {
+        &self.variables
+    }
+
+    pub fn entries(&self) -> TruthTableEntriesIterator {
+        TruthTableEntriesIterator {
+            i: 0,
+            truth_table: self,
+        }
     }
 }
 
@@ -59,16 +93,11 @@ impl fmt::Display for TruthTable {
         writeln!(f, "|---|")?;
 
         // Print rows
-        for i in 0..(1 << self.variables.len()) {
-            let binary_values = format!("{:0width$b}", i, width = self.variables.len());
-
-            // Print variable values
-            for c in binary_values.chars() {
-                write!(f, "| {} ", c)?;
+        for (values, result) in self.entries() {
+            for c in values {
+                write!(f, "| {} ", c as char)?;
             }
-
-            // Print result
-            writeln!(f, "| {} |", self.entries[i as usize] as u32)?;
+            writeln!(f, "| {} |", ((result as u8) + b'0') as char)?;
         }
 
         Ok(())
@@ -82,11 +111,6 @@ pub fn print_truth_table(formula: &str) {
     }
 }
 
-// fn simplify_formula() {
-//     use crate::bool_formula_ast::Node;
-//     let node = Node::parse(s)
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,17 +120,7 @@ mod tests {
         let res = TruthTable::compute("AB&C|").unwrap().to_string();
         assert_eq!(
             res,
-            "| A | B | C | = |
-|---|---|---|---|
-| 0 | 0 | 0 | 0 |
-| 0 | 0 | 1 | 1 |
-| 0 | 1 | 0 | 0 |
-| 0 | 1 | 1 | 1 |
-| 1 | 0 | 0 | 0 |
-| 1 | 0 | 1 | 1 |
-| 1 | 1 | 0 | 1 |
-| 1 | 1 | 1 | 1 |
-"
+            "| A | B | C | = |\n|---|---|---|---|\n| 0 | 0 | 0 | 0 |\n| 0 | 0 | 1 | 1 |\n| 0 | 1 | 0 | 0 |\n| 0 | 1 | 1 | 1 |\n| 1 | 0 | 0 | 0 |\n| 1 | 0 | 1 | 1 |\n| 1 | 1 | 0 | 1 |\n| 1 | 1 | 1 | 1 |\n"
         );
         assert!(TruthTable::compute("AB&C|&").is_err());
     }
