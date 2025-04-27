@@ -1,6 +1,6 @@
 use crate::ex04_truth_table::TruthTable;
 
-fn sat(formula: &str) -> bool {
+pub fn sat(formula: &str) -> bool {
     TruthTable::compute(formula)
         .unwrap()
         .entries()

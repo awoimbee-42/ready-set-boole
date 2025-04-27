@@ -37,4 +37,5 @@ fn main() {
         cnf_input,
         ex06_conjunctive_normal_form::conjunctive_normal_form(cnf_input)
     );
+    println!("sat('AA^')={}", ex07_sat::sat("AA^"));
 }
