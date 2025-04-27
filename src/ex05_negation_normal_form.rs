@@ -1,7 +1,61 @@
-use crate::bool_formula_ast::{MyError, Node, Op};
+use crate::bool_formula_ast::{MyError, Node, Op, Oper};
 use std::mem;
 
 impl Node {
+    pub fn to_primitive_connectives_mut(&mut self) {
+        match self {
+            Node::Neg(child) => {
+                child.to_primitive_connectives_mut();
+            }
+            Node::Operator(Op { char: op, children }) => {
+                match op {
+                    Oper::ExclusiveDisjunction => {
+                        // rm exclusive disjunction
+                        *op = Oper::Conjunction;
+                        *children = Box::new([
+                            Node::Operator(Op {
+                                char: Oper::Disjunction,
+                                children: children.clone(),
+                            }),
+                            Node::Neg(Box::new(Node::Operator(Op {
+                                char: Oper::Conjunction,
+                                children: children.clone(),
+                            }))),
+                        ]);
+                    }
+                    Oper::Equivalence => {
+                        // rm equivalence
+                        let mut children_rev = children.clone();
+                        children_rev.reverse();
+                        *op = Oper::Conjunction;
+                        *children = Box::new([
+                            Node::Operator(Op {
+                                char: Oper::MaterialCondition,
+                                children: children.clone(),
+                            }),
+                            Node::Operator(Op {
+                                char: Oper::MaterialCondition,
+                                children: children_rev,
+                            }),
+                        ]);
+                    }
+                    Oper::MaterialCondition => {
+                        // rm material condition
+                        *op = Oper::Disjunction;
+                        *children = Box::new([
+                            Node::Neg(Box::new(children[0].clone())),
+                            children[1].clone(),
+                        ]);
+                    }
+                    Oper::Conjunction | Oper::Disjunction => (),
+                }
+                children[0].to_primitive_connectives_mut();
+                children[1].to_primitive_connectives_mut();
+            }
+            Node::Value(_) | Node::Variable(_) => (),
+        }
+    }
+
     /// `self` MUST be in primitive connectives
     ///
     /// Using De Morgan's equivalences
@@ -9,17 +63,18 @@ impl Node {
         if let Node::Neg(child) = self {
             if let Node::Operator(
                 op @ Op {
-                    char: '&' | '|', ..
+                    char: Oper::Conjunction | Oper::Disjunction,
+                    ..
                 },
             ) = &mut **child
             {
                 for gc in op.children.iter_mut() {
                     gc.neg();
                 }
-                if op.char == '&' {
-                    op.char = '|';
+                if op.char == Oper::Conjunction {
+                    op.char = Oper::Disjunction;
                 } else {
-                    op.char = '&'
+                    op.char = Oper::Conjunction
                 }
                 *self = mem::take(child);
             }
@@ -70,7 +125,10 @@ mod tests {
         for n in parsed_nnf.into_iter() {
             match n {
                 Node::Operator(Op { char: op, .. }) => {
-                    assert!(matches!(op, '&' | '|'), "In NNF, only & and | are allowed");
+                    assert!(
+                        matches!(op, Oper::Conjunction | Oper::Disjunction),
+                        "In NNF, only & and | are allowed"
+                    );
                 }
                 Node::Variable(v) => {
                     assert!(v.is_ascii_uppercase(), "Invalid variable: {v}");
@@ -126,7 +184,7 @@ mod tests {
     #[test]
     fn smoke_test_random() {
         for _ in 0..100 {
-            let tree = Node::new_random(&['A', 'B', 'C', 'D', 'E']);
+            let tree = Node::new_random(&['A', 'B', 'C', 'D', 'E'], &mut 100);
             let formula = tree.to_string();
             assert_correct_nnf(&formula);
         }

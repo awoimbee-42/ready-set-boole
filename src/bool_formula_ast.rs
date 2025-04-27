@@ -15,15 +15,56 @@ pub enum MyError {
     UnsetVariable(char),
 }
 
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum Oper {
+    Conjunction,
+    Disjunction,
+    ExclusiveDisjunction,
+    MaterialCondition,
+    Equivalence,
+}
+
+impl Oper {
+    pub fn ascii_char(&self) -> char {
+        match self {
+            Self::Conjunction => '&',
+            Self::Disjunction => '|',
+            Self::ExclusiveDisjunction => '^',
+            Self::MaterialCondition => '>',
+            Self::Equivalence => '=',
+        }
+    }
+    pub fn utf8_char(&self) -> char {
+        match self {
+            Self::Conjunction => '∧',
+            Self::Disjunction => '∨',
+            Self::ExclusiveDisjunction => '⊕',
+            Self::MaterialCondition => '⇒',
+            Self::Equivalence => '⇔',
+        }
+    }
+
+    pub fn from_ascii(char: char) -> Result<Self, MyError> {
+        match char {
+            '&' => Ok(Self::Conjunction),
+            '|' => Ok(Self::Disjunction),
+            '^' => Ok(Self::ExclusiveDisjunction),
+            '>' => Ok(Self::MaterialCondition),
+            '=' => Ok(Self::Equivalence),
+            _ => Err(MyError::InvalidChar(char)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Op {
-    pub char: char,
+    pub char: Oper,
     pub children: Box<[Node; 2]>,
 }
 
 impl Op {
     #[inline]
-    pub fn new(char: char, children: Box<[Node; 2]>) -> Self {
+    pub fn new(char: Oper, children: Box<[Node; 2]>) -> Self {
         Self { char, children }
     }
 }
@@ -88,7 +129,7 @@ impl<'a> IntoIterator for &'a Node {
 impl Node {
     pub fn char(&self) -> char {
         match self {
-            Self::Operator(Op { char: c, .. }) => *c,
+            Self::Operator(Op { char: c, .. }) => c.ascii_char(),
             Self::Variable(c) => *c,
             Self::Value(b) => {
                 if *b {
@@ -120,10 +161,14 @@ impl Node {
                 children[1].partial_evaluate(var, value);
 
                 match op {
-                    '&' if children.iter().any(|c| matches!(c, Node::Value(false))) => {
+                    Oper::Conjunction
+                        if children.iter().any(|c| matches!(c, Node::Value(false))) =>
+                    {
                         *self = Node::Value(false);
                     }
-                    '|' if children.iter().any(|c| matches!(c, Node::Value(true))) => {
+                    Oper::Disjunction
+                        if children.iter().any(|c| matches!(c, Node::Value(true))) =>
+                    {
                         *self = Node::Value(true);
                     }
                     _ => {
@@ -131,12 +176,11 @@ impl Node {
                             (&children[0], &children[1])
                         {
                             let result = match op {
-                                '&' => *left && *right,
-                                '|' => *left || *right,
-                                '^' => *left != *right,
-                                '>' => !*left || *right,
-                                '=' => *left == *right,
-                                _ => panic!("Invalid operator"),
+                                Oper::Conjunction => *left && *right,
+                                Oper::Disjunction => *left || *right,
+                                Oper::ExclusiveDisjunction => *left != *right,
+                                Oper::MaterialCondition => !*left || *right,
+                                Oper::Equivalence => *left == *right,
                             };
                             *self = Node::Value(result);
                         }
@@ -165,7 +209,7 @@ impl Node {
                 let right = Self::inner_parse(s)?;
                 let left = Self::inner_parse(s)?;
                 let node = Self::Operator(Op {
-                    char: val,
+                    char: Oper::from_ascii(val)?,
                     children: Box::new([left, right]),
                 });
 
@@ -190,17 +234,31 @@ impl Node {
     }
 
     #[cfg(test)]
-    pub fn new_random(variables: &[char]) -> Self {
-        let nodekind = rand::random::<usize>() % 4;
+    pub fn new_random(variables: &[char], limit: &mut usize) -> Self {
+        *limit = limit.saturating_sub(1);
+        let nodekind = if *limit == 0 {
+            rand::random::<usize>() % 2
+        } else {
+            rand::random::<usize>() % 4
+        };
 
         match nodekind {
             0 => Node::Variable(variables[rand::random::<usize>() % variables.len()]),
             1 => Node::Value(rand::random::<bool>()),
             2 => Node::Operator(Op {
-                char: ['&', '|', '^', '>', '='][rand::random::<usize>() % 5],
-                children: Box::new([Self::new_random(variables), Self::new_random(variables)]),
+                char: [
+                    Oper::Conjunction,
+                    Oper::Disjunction,
+                    Oper::ExclusiveDisjunction,
+                    Oper::MaterialCondition,
+                    Oper::Equivalence,
+                ][rand::random::<usize>() % 5],
+                children: Box::new([
+                    Self::new_random(variables, limit),
+                    Self::new_random(variables, limit),
+                ]),
             }),
-            3 => Node::Neg(Box::new(Self::new_random(variables))),
+            3 => Node::Neg(Box::new(Self::new_random(variables, limit))),
             _ => unreachable!(),
         }
     }
@@ -220,60 +278,6 @@ impl Node {
             children[1].recursive_edit_operators(f);
         }
     }
-
-    pub fn to_primitive_connectives_mut(&mut self) {
-        match self {
-            Node::Neg(child) => {
-                child.to_primitive_connectives_mut();
-            }
-            Node::Operator(Op { char: op, children }) => {
-                match op {
-                    '^' => {
-                        // rm exclusive disjunction
-                        *op = '&';
-                        *children = Box::new([
-                            Node::Operator(Op {
-                                char: '|',
-                                children: children.clone(),
-                            }),
-                            Node::Neg(Box::new(Node::Operator(Op {
-                                char: '&',
-                                children: children.clone(),
-                            }))),
-                        ]);
-                    }
-                    '=' => {
-                        // rm equivalence
-                        let mut children_rev = children.clone();
-                        children_rev.reverse();
-                        *op = '&';
-                        *children = Box::new([
-                            Node::Operator(Op {
-                                char: '>',
-                                children: children.clone(),
-                            }),
-                            Node::Operator(Op {
-                                char: '>',
-                                children: children_rev,
-                            }),
-                        ]);
-                    }
-                    '>' => {
-                        // rm material condition
-                        *op = '|';
-                        *children = Box::new([
-                            Node::Neg(Box::new(children[0].clone())),
-                            children[1].clone(),
-                        ]);
-                    }
-                    _ => (),
-                }
-                children[0].to_primitive_connectives_mut();
-                children[1].to_primitive_connectives_mut();
-            }
-            Node::Value(_) | Node::Variable(_) => (),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -285,7 +289,7 @@ mod tests {
         assert_eq!(
             Node::parse("AB|!").unwrap(),
             Node::Neg(Box::new(Node::Operator(Op::new(
-                '|',
+                Oper::Disjunction,
                 Box::new([Node::Variable('A'), Node::Variable('B')])
             ))))
         );

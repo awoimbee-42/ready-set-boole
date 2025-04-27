@@ -1,5 +1,4 @@
 use core::fmt;
-use std::iter::empty;
 
 use crate::bool_formula_ast::{MyError, Node};
 
@@ -64,21 +63,23 @@ impl TruthTable {
         vars.sort();
         vars.dedup();
 
+        Self::compute_with_given_vars(formula, vars)
+    }
+
+    /// Allows comparign a simplified formula (with optimized out vars) to a full formula
+    pub fn compute_with_given_vars(formula: &str, variables: Vec<char>) -> Result<Self, MyError> {
         let mut formula = Node::parse(formula)?;
-        let results = if vars.is_empty() {
+        let results = if variables.is_empty() {
             formula.partial_evaluate('_', false);
             match formula {
                 Node::Value(val) => vec![val],
                 _ => return Err(MyError::UnsetVariable('_')),
             }
         } else {
-            recursive_truth_table_results(&formula, &vars)?
+            recursive_truth_table_results(&formula, &variables)?
         };
 
-        Ok(Self {
-            variables: vars,
-            results,
-        })
+        Ok(Self { variables, results })
     }
 
     pub fn entries(&self) -> TruthTableEntriesIterator {
@@ -86,6 +87,10 @@ impl TruthTable {
             i: 0,
             truth_table: self,
         }
+    }
+
+    pub fn variables(&self) -> &[char] {
+        &self.variables
     }
 }
 
