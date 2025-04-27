@@ -1,8 +1,10 @@
 use crate::ex04_truth_table::TruthTable;
 
 fn sat(formula: &str) -> bool {
-    TruthTable::compute(formula).unwrap().entries().any(|(_, r)| r == true)
-
+    TruthTable::compute(formula)
+        .unwrap()
+        .entries()
+        .any(|(_, r)| r)
 }
 
 #[cfg(test)]

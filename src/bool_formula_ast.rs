@@ -1,3 +1,6 @@
+use std::default;
+use std::mem;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -6,71 +9,54 @@ pub enum MyError {
     InvalidChar(char),
     #[error("invalid operator: '{0}'")]
     InvalidOperator(char),
-    // #[error("missing value for operator: {0}")]
-    // MissingValue(char),
-    // #[error("formula returns multiple values")]
-    // TooManyValues,
     #[error("premature end of formula")]
     Eof,
     #[error("value for variable '{0}' is not set")]
-    UnsetVariable(char), // #[error("parsing error: {0}")]
-                         // ParsingError(String),
+    UnsetVariable(char),
 }
 
-// impl From<crate::ex03_boolean_evaluation::ParsingError> for MyError {
-//     fn from(err: crate::ex03_boolean_evaluation::ParsingError) -> Self {
-//         MyError::ParsingError(err.to_string())
-//     }
-// }
+#[derive(Debug, Clone, PartialEq)]
+pub struct Op {
+    pub char: char,
+    pub children: Box<[Node; 2]>,
+}
+
+impl Op {
+    #[inline]
+    pub fn new(char: char, children: Box<[Node; 2]>) -> Self {
+        Self { char, children }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum NodeValue {
-    Operator((char, Box<[Node; 2]>)),
+pub enum Node {
+    Operator(Op),
+    Neg(Box<Node>),
     Variable(char),
     Value(bool),
-}
-impl NodeValue {
-    pub fn char(&self) -> char {
-        match self {
-            Self::Operator((c, _)) => *c,
-            Self::Variable(c) => *c,
-            Self::Value(b) => {
-                if *b {
-                    '1'
-                } else {
-                    '0'
-                }
-            }
-        }
-    }
-
-    pub fn new_operator(char: char, children: Box<[Node; 2]>) -> Self {
-        Self::Operator((char, children))
-    }
-
-    pub fn new_variable(char: char) -> Self {
-        Self::Variable(char)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Node {
-    /// Whether this value is negated or not
-    pub neg: bool,
-    pub val: NodeValue,
 }
 
 impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        if let NodeValue::Operator((_, children)) = &self.val {
-            children[0].fmt(f)?;
-            children[1].fmt(f)?;
+        match self {
+            Node::Operator(Op { children, .. }) => {
+                children[0].fmt(f)?;
+                children[1].fmt(f)?;
+            }
+            Node::Neg(child) => {
+                child.fmt(f)?;
+            }
+            Node::Value(_) | Node::Variable(_) => (),
         }
-        write!(f, "{}", self.val.char())?;
-        if self.neg {
-            write!(f, "!")?;
-        }
+
+        write!(f, "{}", self.char())?;
         Ok(())
+    }
+}
+
+impl default::Default for Node {
+    fn default() -> Self {
+        Self::Value(false)
     }
 }
 
@@ -82,9 +68,10 @@ impl<'a> Iterator for NodeIterator<'a> {
     type Item = &'a Node;
     fn next(&mut self) -> Option<Self::Item> {
         let node = self.stack.pop()?;
-        if let NodeValue::Operator((_, children)) = &node.val {
-            // children: &Box[Node; 2]
-            self.stack.extend(children.iter());
+        match &node {
+            Node::Operator(Op { children, .. }) => self.stack.extend(children.iter()),
+            Node::Neg(child) => self.stack.push(child),
+            _ => (),
         }
         Some(node)
     }
@@ -99,147 +86,194 @@ impl<'a> IntoIterator for &'a Node {
 }
 
 impl Node {
-    pub fn new(neg: bool, val: NodeValue) -> Self {
-        Self { neg, val }
-    }
-
-    pub fn evaluate(&self) -> Result<bool, MyError> {
-        let result = match &self.val {
-            NodeValue::Value(b) => *b,
-            NodeValue::Variable(c) => return Err(MyError::UnsetVariable(*c)),
-            NodeValue::Operator((op, children)) => {
-                let left = children[0].evaluate()?;
-                let right = children[1].evaluate()?;
-                match op {
-                    '&' => left && right,
-                    '|' => left || right,
-                    '^' => left != right,
-                    '>' => !left || right,
-                    '=' => left == right,
-                    _ => panic!("Invalid operator"),
+    pub fn char(&self) -> char {
+        match self {
+            Self::Operator(Op { char: c, .. }) => *c,
+            Self::Variable(c) => *c,
+            Self::Value(b) => {
+                if *b {
+                    '1'
+                } else {
+                    '0'
                 }
             }
+            Self::Neg(_) => '!',
+        }
+    }
+
+    pub fn neg(&mut self) {
+        match self {
+            Node::Neg(child) => *self = mem::take(child),
+            _ => *self = Node::Neg(Box::new(mem::take(self))),
         };
-        Ok(result ^ self.neg)
     }
 
     pub fn partial_evaluate(&mut self, var: char, value: bool) {
-        match &mut self.val {
-            NodeValue::Variable(c) => {
+        match self {
+            Node::Variable(c) => {
                 if var == *c {
-                    self.val = NodeValue::Value(value ^ self.neg);
-                    self.neg = false;
+                    *self = Node::Value(value);
                 }
             }
-            NodeValue::Operator((op, children)) => {
+            Node::Operator(Op { char: op, children }) => {
                 children[0].partial_evaluate(var, value);
                 children[1].partial_evaluate(var, value);
 
-                // If both children are now values, evaluate this node
-                if let (NodeValue::Value(left), NodeValue::Value(right)) =
-                    (&children[0].val, &children[1].val)
-                {
-                    let result = match op {
-                        '&' => *left && *right,
-                        '|' => *left || *right,
-                        '^' => *left != *right,
-                        '>' => !*left || *right,
-                        '=' => *left == *right,
-                        _ => panic!("Invalid operator"),
-                    };
-                    self.val = NodeValue::Value(result ^ self.neg);
-                    self.neg = false;
+                match op {
+                    '&' if children.iter().any(|c| matches!(c, Node::Value(false))) => {
+                        *self = Node::Value(false);
+                    }
+                    '|' if children.iter().any(|c| matches!(c, Node::Value(true))) => {
+                        *self = Node::Value(true);
+                    }
+                    _ => {
+                        if let (Node::Value(left), Node::Value(right)) =
+                            (&children[0], &children[1])
+                        {
+                            let result = match op {
+                                '&' => *left && *right,
+                                '|' => *left || *right,
+                                '^' => *left != *right,
+                                '>' => !*left || *right,
+                                '=' => *left == *right,
+                                _ => panic!("Invalid operator"),
+                            };
+                            *self = Node::Value(result);
+                        }
+                    }
                 }
             }
-            _ => {}
+            Self::Neg(child) => {
+                child.partial_evaluate(var, value);
+                match &**child {
+                    Self::Value(val) => *self = Self::Value(!val),
+                    Self::Neg(grand_child) => {
+                        *self = *grand_child.clone();
+                    }
+                    Self::Operator(_) | Self::Variable(_) => (),
+                }
+            }
+            Self::Value(_) => (),
         }
     }
 
-    fn inner_parse(mut s: &[u8]) -> Result<(Node, &[u8]), MyError> {
-        let mut val = *s.last().ok_or(MyError::Eof)? as char;
-        s = &s[..s.len() - 1];
-        let mut neg = false;
-
-        while val == '!' {
-            val = *s.last().ok_or(MyError::InvalidOperator('!'))? as char;
-            s = &s[..s.len() - 1];
-            neg ^= true;
-        }
+    fn inner_parse(s: &mut String) -> Result<Self, MyError> {
+        let val = s.pop().ok_or(MyError::Eof)?;
 
         match val {
             '&' | '^' | '|' | '>' | '=' => {
                 let right = Self::inner_parse(s)?;
-                let left = Self::inner_parse(right.1)?;
+                let left = Self::inner_parse(s)?;
+                let node = Self::Operator(Op {
+                    char: val,
+                    children: Box::new([left, right]),
+                });
 
-                let node = Node {
-                    neg,
-                    val: NodeValue::Operator((val, Box::new([left.0, right.0]))),
-                };
-
-                Ok((node, left.1))
+                Ok(node)
             }
-            'A'..='Z' => Ok((
-                Node {
-                    neg,
-                    val: NodeValue::Variable(val),
-                },
-                s,
-            )),
-            '0' | '1' => Ok((
-                Node {
-                    neg,
-                    val: NodeValue::Value(val == '1'),
-                },
-                s,
-            )),
+            'A'..='Z' => Ok(Self::Variable(val)),
+            '0' | '1' => Ok(Self::Value(val == '1')),
+            '!' => {
+                let mut child = Self::inner_parse(s)?;
+                child.neg();
+                Ok(child)
+            }
             _ => Err(MyError::InvalidChar(val)),
         }
     }
 
-    pub fn parse(s: &str) -> Result<Node, MyError> {
-        let res = Self::inner_parse(s.as_bytes())?;
-        debug_assert!(res.1.is_empty());
-        Ok(res.0)
+    pub fn parse<S: Into<String>>(s: S) -> Result<Self, MyError> {
+        let mut s: String = s.into();
+        let res = Self::inner_parse(&mut s)?;
+        debug_assert!(s.is_empty());
+        Ok(res)
     }
 
     #[cfg(test)]
-    fn new_random(variables: &[char]) -> Self {
-        let nodekind = rand::random::<usize>() % 3;
+    pub fn new_random(variables: &[char]) -> Self {
+        let nodekind = rand::random::<usize>() % 4;
 
-        let value = match nodekind {
-            0 => NodeValue::Variable(variables[rand::random::<usize>() % variables.len()]),
-            1 => NodeValue::Value(rand::random::<bool>()),
-            2 => NodeValue::Operator((
-                ['&', '|', '^', '>', '='][rand::random::<usize>() % 5],
-                Box::new([Self::new_random(variables), Self::new_random(variables)]),
-            )),
+        match nodekind {
+            0 => Node::Variable(variables[rand::random::<usize>() % variables.len()]),
+            1 => Node::Value(rand::random::<bool>()),
+            2 => Node::Operator(Op {
+                char: ['&', '|', '^', '>', '='][rand::random::<usize>() % 5],
+                children: Box::new([Self::new_random(variables), Self::new_random(variables)]),
+            }),
+            3 => Node::Neg(Box::new(Self::new_random(variables))),
             _ => unreachable!(),
-        };
-
-        Self {
-            neg: rand::random::<bool>(),
-            val: value,
         }
     }
 
     pub fn recursive_edit_operators<F: FnMut(&mut Self)>(&mut self, f: &mut F) {
-        if let NodeValue::Operator(_) = self.val {
+        if let Node::Neg(_) = self {
             f(self);
         }
-        if let NodeValue::Operator((_, children)) = &mut self.val {
+        if let Node::Neg(child) = self {
+            f(child);
+        }
+        if let Node::Operator(_) = self {
+            f(self);
+        }
+        if let Node::Operator(Op { children, .. }) = self {
             children[0].recursive_edit_operators(f);
             children[1].recursive_edit_operators(f);
         }
     }
 
-    // pub fn value_edit<F: FnMut(&mut Self)>(&mut self, f: &mut F) {
-    //     if let NodeValue::Operator((_, children)) = &mut self.val {
-    //         children[0].operator_edit(f);
-    //         children[1].operator_edit(f);
-    //     } else{
-    //         f(self);
-    //     }
-    // }
+    pub fn to_primitive_connectives_mut(&mut self) {
+        match self {
+            Node::Neg(child) => {
+                child.to_primitive_connectives_mut();
+            }
+            Node::Operator(Op { char: op, children }) => {
+                match op {
+                    '^' => {
+                        // rm exclusive disjunction
+                        *op = '&';
+                        *children = Box::new([
+                            Node::Operator(Op {
+                                char: '|',
+                                children: children.clone(),
+                            }),
+                            Node::Neg(Box::new(Node::Operator(Op {
+                                char: '&',
+                                children: children.clone(),
+                            }))),
+                        ]);
+                    }
+                    '=' => {
+                        // rm equivalence
+                        let mut children_rev = children.clone();
+                        children_rev.reverse();
+                        *op = '&';
+                        *children = Box::new([
+                            Node::Operator(Op {
+                                char: '>',
+                                children: children.clone(),
+                            }),
+                            Node::Operator(Op {
+                                char: '>',
+                                children: children_rev,
+                            }),
+                        ]);
+                    }
+                    '>' => {
+                        // rm material condition
+                        *op = '|';
+                        *children = Box::new([
+                            Node::Neg(Box::new(children[0].clone())),
+                            children[1].clone(),
+                        ]);
+                    }
+                    _ => (),
+                }
+                children[0].to_primitive_connectives_mut();
+                children[1].to_primitive_connectives_mut();
+            }
+            Node::Value(_) | Node::Variable(_) => (),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -250,16 +284,10 @@ mod tests {
     fn parse() {
         assert_eq!(
             Node::parse("AB|!").unwrap(),
-            Node::new(
-                true,
-                NodeValue::new_operator(
-                    '|',
-                    Box::new([
-                        Node::new(false, NodeValue::new_variable('A')),
-                        Node::new(false, NodeValue::new_variable('B'))
-                    ])
-                )
-            )
+            Node::Neg(Box::new(Node::Operator(Op::new(
+                '|',
+                Box::new([Node::Variable('A'), Node::Variable('B')])
+            ))))
         );
     }
 
@@ -281,15 +309,24 @@ mod tests {
     #[test]
     fn partial_evaluation() {
         let raw_formula = "AB>C&!D|A^B=";
-        let final_formula = Node::parse("01>1&!0|0^1=").unwrap();
+        // let final_formula = Node::parse("01>1&!0|0^1=").unwrap();
         let mut partialy_evaluated = Node::parse(raw_formula).unwrap();
         partialy_evaluated.partial_evaluate('A', false);
         partialy_evaluated.partial_evaluate('B', true);
         partialy_evaluated.partial_evaluate('C', true);
         partialy_evaluated.partial_evaluate('D', false);
-        assert_eq!(
-            partialy_evaluated.evaluate().unwrap(),
-            final_formula.evaluate().unwrap()
-        );
+        assert_eq!(partialy_evaluated, Node::Value(false));
+    }
+
+    #[test]
+    fn neg() {
+        let doit = |formula: &str| {
+            let mut tree = Node::parse(formula).unwrap();
+            tree.neg();
+            tree.to_string()
+        };
+
+        assert_eq!(doit("AB|"), "AB|!");
+        assert_eq!(doit("A!"), "A");
     }
 }

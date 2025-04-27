@@ -26,8 +26,8 @@ mod test {
             }
         }
         assert_eq!(
-            multiplier(std::u32::MAX, std::u32::MAX),
-            std::u32::MAX.wrapping_mul(std::u32::MAX)
+            multiplier(u32::MAX, u32::MAX),
+            u32::MAX.wrapping_mul(u32::MAX)
         );
     }
 }

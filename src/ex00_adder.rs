@@ -19,9 +19,6 @@ mod test {
                 assert_eq!(adder(i, j), i + j);
             }
         }
-        assert_eq!(
-            adder(std::u32::MAX, std::u32::MAX),
-            std::u32::MAX.wrapping_add(std::u32::MAX)
-        );
+        assert_eq!(adder(u32::MAX, u32::MAX), u32::MAX.wrapping_add(u32::MAX));
     }
 }

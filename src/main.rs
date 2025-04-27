@@ -31,4 +31,10 @@ fn main() {
         nnf_input,
         ex05_negation_normal_form::negation_normal_form(nnf_input)
     );
+    let cnf_input = "AB|!C!&";
+    println!(
+        "CNF({:?})={}",
+        cnf_input,
+        ex06_conjunctive_normal_form::conjunctive_normal_form(cnf_input)
+    );
 }

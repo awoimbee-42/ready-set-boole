@@ -1,5 +1,5 @@
 use core::fmt;
-use std::fmt::Write;
+use std::iter::empty;
 
 use crate::bool_formula_ast::{MyError, Node};
 
@@ -16,7 +16,10 @@ fn recursive_truth_table_results(formula: &Node, vars: &[char]) -> Result<Vec<bo
         let mut f = formula.clone();
         f.partial_evaluate(var, val);
         if vars.len() == 1 {
-            result.push(f.evaluate()?);
+            match f {
+                Node::Value(val) => result.push(val),
+                _ => return Err(MyError::UnsetVariable('_')),
+            }
         } else {
             result.append(&mut recursive_truth_table_results(&f, &vars[1..])?);
         }
@@ -36,12 +39,16 @@ impl Iterator for TruthTableEntriesIterator<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let result = *self.truth_table.results.get(self.i)?;
-        let values = format!(
-            "{:0width$b}",
-            self.i,
-            width = self.truth_table.variables.len()
-        )
-        .into_bytes();
+        let values = if self.i == 0 && self.truth_table.variables.is_empty() {
+            vec![]
+        } else {
+            format!(
+                "{:0width$b}",
+                self.i,
+                width = self.truth_table.variables.len()
+            )
+            .into_bytes()
+        };
         self.i += 1;
 
         Some((values, result))
@@ -57,17 +64,21 @@ impl TruthTable {
         vars.sort();
         vars.dedup();
 
-        let formula = Node::parse(formula)?;
-        let results = recursive_truth_table_results(&formula, &vars)?;
+        let mut formula = Node::parse(formula)?;
+        let results = if vars.is_empty() {
+            formula.partial_evaluate('_', false);
+            match formula {
+                Node::Value(val) => vec![val],
+                _ => return Err(MyError::UnsetVariable('_')),
+            }
+        } else {
+            recursive_truth_table_results(&formula, &vars)?
+        };
 
         Ok(Self {
             variables: vars,
             results,
         })
-    }
-
-    pub fn variables(&self) -> &[char] {
-        &self.variables
     }
 
     pub fn entries(&self) -> TruthTableEntriesIterator {
@@ -123,5 +134,10 @@ mod tests {
             "| A | B | C | = |\n|---|---|---|---|\n| 0 | 0 | 0 | 0 |\n| 0 | 0 | 1 | 1 |\n| 0 | 1 | 0 | 0 |\n| 0 | 1 | 1 | 1 |\n| 1 | 0 | 0 | 0 |\n| 1 | 0 | 1 | 1 |\n| 1 | 1 | 0 | 1 |\n| 1 | 1 | 1 | 1 |\n"
         );
         assert!(TruthTable::compute("AB&C|&").is_err());
+    }
+    #[test]
+    fn test_truth_table_no_var() {
+        let res = TruthTable::compute("0!").unwrap().to_string();
+        assert_eq!(res, "| = |\n|---|\n| 1 |\n");
     }
 }
