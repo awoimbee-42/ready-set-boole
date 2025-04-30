@@ -3,56 +3,61 @@ use std::mem;
 
 impl Node {
     pub fn to_primitive_connectives_mut(&mut self) {
-        match self {
-            Node::Neg(child) => {
-                child.to_primitive_connectives_mut();
-            }
-            Node::Operator(Op { char: op, children }) => {
-                match op {
-                    Oper::ExclusiveDisjunction => {
-                        // rm exclusive disjunction
-                        *op = Oper::Conjunction;
-                        *children = Box::new([
-                            Node::Operator(Op {
-                                char: Oper::Disjunction,
-                                children: children.clone(),
-                            }),
-                            Node::Neg(Box::new(Node::Operator(Op {
-                                char: Oper::Conjunction,
-                                children: children.clone(),
-                            }))),
-                        ]);
-                    }
-                    Oper::Equivalence => {
-                        // rm equivalence
-                        let mut children_rev = children.clone();
-                        children_rev.reverse();
-                        *op = Oper::Conjunction;
-                        *children = Box::new([
-                            Node::Operator(Op {
-                                char: Oper::MaterialCondition,
-                                children: children.clone(),
-                            }),
-                            Node::Operator(Op {
-                                char: Oper::MaterialCondition,
-                                children: children_rev,
-                            }),
-                        ]);
-                    }
-                    Oper::MaterialCondition => {
-                        // rm material condition
-                        *op = Oper::Disjunction;
-                        *children = Box::new([
-                            Node::Neg(Box::new(children[0].clone())),
-                            children[1].clone(),
-                        ]);
-                    }
-                    Oper::Conjunction | Oper::Disjunction => (),
+        let mut stack: Vec<&mut Node> = vec![self];
+
+        while let Some(node) = stack.pop() {
+            match node {
+                Node::Neg(child) => {
+                    stack.push(child);
                 }
-                children[0].to_primitive_connectives_mut();
-                children[1].to_primitive_connectives_mut();
+                Node::Operator(Op { char: op, children }) => {
+                    match op {
+                        Oper::ExclusiveDisjunction => {
+                            // rm exclusive disjunction
+                            *op = Oper::Conjunction;
+                            *children = Box::new([
+                                Node::Operator(Op {
+                                    char: Oper::Disjunction,
+                                    children: children.clone(),
+                                }),
+                                Node::Neg(Box::new(Node::Operator(Op {
+                                    char: Oper::Conjunction,
+                                    children: children.clone(),
+                                }))),
+                            ]);
+                        }
+                        Oper::Equivalence => {
+                            // rm equivalence
+                            let mut children_rev = children.clone();
+                            children_rev.reverse();
+                            *op = Oper::Conjunction;
+                            *children = Box::new([
+                                Node::Operator(Op {
+                                    char: Oper::MaterialCondition,
+                                    children: children.clone(),
+                                }),
+                                Node::Operator(Op {
+                                    char: Oper::MaterialCondition,
+                                    children: children_rev,
+                                }),
+                            ]);
+                        }
+                        Oper::MaterialCondition => {
+                            // rm material condition
+                            *op = Oper::Disjunction;
+                            *children = Box::new([
+                                Node::Neg(Box::new(children[0].clone())),
+                                children[1].clone(),
+                            ]);
+                        }
+                        Oper::Conjunction | Oper::Disjunction => (),
+                    }
+                    let (left, right) = children.split_at_mut(1);
+                    stack.push(&mut left[0]);
+                    stack.push(&mut right[0]);
+                }
+                Node::Value(_) | Node::Variable(_) => (),
             }
-            Node::Value(_) | Node::Variable(_) => (),
         }
     }
 

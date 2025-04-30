@@ -71,10 +71,10 @@ impl Op {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
-    Operator(Op),
-    Neg(Box<Node>),
-    Variable(char),
     Value(bool),
+    Variable(char),
+    Neg(Box<Node>),
+    Operator(Op),
 }
 
 impl std::fmt::Display for Node {
@@ -189,10 +189,10 @@ impl Node {
             }
             Self::Neg(child) => {
                 child.partial_evaluate(var, value);
-                match &**child {
-                    Self::Value(val) => *self = Self::Value(!val),
+                match &mut **child {
+                    Self::Value(val) => *self = Self::Value(!*val),
                     Self::Neg(grand_child) => {
-                        *self = *grand_child.clone();
+                        *self = mem::take(&mut *grand_child);
                     }
                     Self::Operator(_) | Self::Variable(_) => (),
                 }
