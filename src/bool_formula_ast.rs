@@ -234,13 +234,8 @@ impl Node {
     }
 
     #[cfg(test)]
-    pub fn new_random(variables: &[char], limit: &mut usize) -> Self {
-        *limit = limit.saturating_sub(1);
-        let nodekind = if *limit == 0 {
-            rand::random::<usize>() % 2
-        } else {
-            rand::random::<usize>() % 4
-        };
+    pub fn new_random(variables: &[char]) -> Self {
+        let nodekind = rand::random::<usize>() % 4;
 
         match nodekind {
             0 => Node::Variable(variables[rand::random::<usize>() % variables.len()]),
@@ -253,12 +248,9 @@ impl Node {
                     Oper::MaterialCondition,
                     Oper::Equivalence,
                 ][rand::random::<usize>() % 5],
-                children: Box::new([
-                    Self::new_random(variables, limit),
-                    Self::new_random(variables, limit),
-                ]),
+                children: Box::new([Self::new_random(variables), Self::new_random(variables)]),
             }),
-            3 => Node::Neg(Box::new(Self::new_random(variables, limit))),
+            3 => Node::Neg(Box::new(Self::new_random(variables))),
             _ => unreachable!(),
         }
     }
@@ -332,5 +324,19 @@ mod tests {
 
         assert_eq!(doit("AB|"), "AB|!");
         assert_eq!(doit("A!"), "A");
+    }
+
+    #[test]
+    fn can_parse_huge_formula() {
+        loop {
+            let mut tree = Node::new_random(&['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
+            tree.to_primitive_connectives_mut();
+            let formula = tree.to_string();
+            if formula.len() < 100_000 {
+                continue;
+            }
+            Node::parse(formula).unwrap();
+            break;
+        }
     }
 }

@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn smoke_test_random() {
         for _ in 0..100 {
-            let mut tree = Node::new_random(&['A', 'B', 'C', 'D', 'E'], &mut 100);
+            let mut tree = Node::new_random(&['A', 'B', 'C', 'D', 'E']);
             tree.to_primitive_connectives_mut();
             tree.to_negation_normal_form_mut();
             let formula = tree.to_string();

@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn smoke_test_random() {
         for _ in 0..100 {
-            let tree = Node::new_random(&['A', 'B', 'C', 'D', 'E'], &mut 100);
+            let tree = Node::new_random(&['A', 'B', 'C', 'D', 'E']);
             let formula = tree.to_string();
             assert_correct_nnf(&formula);
         }
