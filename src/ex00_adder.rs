@@ -1,11 +1,7 @@
 pub fn adder(a: u32, b: u32) -> u32 {
     let res = a ^ b;
     let carry = (a & b) << 1;
-    if carry == 0 {
-        res
-    } else {
-        adder(res, carry)
-    }
+    if carry == 0 { res } else { adder(res, carry) }
 }
 
 #[cfg(test)]

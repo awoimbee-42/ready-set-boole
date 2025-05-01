@@ -8,6 +8,7 @@ mod ex04_truth_table;
 mod ex05_negation_normal_form;
 mod ex06_conjunctive_normal_form;
 mod ex07_sat;
+mod ex08_powerset;
 
 fn main() {
     // Bitwise operations
@@ -38,4 +39,8 @@ fn main() {
         ex06_conjunctive_normal_form::conjunctive_normal_form(cnf_input)
     );
     println!("sat('AA^')={}", ex07_sat::sat("AA^"));
+    println!(
+        "powerset(&[1, 2, 3])={:?}",
+        ex08_powerset::powerset(&[1, 2, 3])
+    )
 }

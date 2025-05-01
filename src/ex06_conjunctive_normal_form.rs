@@ -68,13 +68,16 @@ impl Op {
         };
 
         match &mut *self.children {
-            [Node::Operator(Op {
-                char: Oper::Conjunction,
-                children: child_l,
-            }), Node::Operator(Op {
-                char: Oper::Conjunction,
-                children: child_r,
-            })] => {
+            [
+                Node::Operator(Op {
+                    char: Oper::Conjunction,
+                    children: child_l,
+                }),
+                Node::Operator(Op {
+                    char: Oper::Conjunction,
+                    children: child_r,
+                }),
+            ] => {
                 self.char = Oper::Conjunction;
 
                 let mut new_operands = Box::new([
@@ -89,10 +92,13 @@ impl Op {
                 let mut new_operands = new_operands.map(Node::Operator);
                 self.build_right_handed_tree_from_node_list(&mut new_operands, Oper::Conjunction);
             }
-            [child_l, Node::Operator(Op {
-                char: Oper::Conjunction,
-                children: nested_children,
-            })] => {
+            [
+                child_l,
+                Node::Operator(Op {
+                    char: Oper::Conjunction,
+                    children: nested_children,
+                }),
+            ] => {
                 self.char = Oper::Conjunction;
                 let mut new_ops = Box::new([
                     new_or(child_l.clone(), mem::take(&mut nested_children[0])),
@@ -106,10 +112,13 @@ impl Op {
                     Oper::Conjunction,
                 );
             }
-            [Node::Operator(Op {
-                char: Oper::Conjunction,
-                children: nested_children,
-            }), child_r] => {
+            [
+                Node::Operator(Op {
+                    char: Oper::Conjunction,
+                    children: nested_children,
+                }),
+                child_r,
+            ] => {
                 self.char = Oper::Conjunction;
                 let mut new_ops = Box::new([
                     new_or(mem::take(&mut nested_children[0]), child_r.clone()),

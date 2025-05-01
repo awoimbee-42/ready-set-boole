@@ -89,6 +89,7 @@ impl TruthTable {
         }
     }
 
+    #[allow(dead_code)]
     pub fn variables(&self) -> &[char] {
         &self.variables
     }
