@@ -9,6 +9,9 @@ mod ex05_negation_normal_form;
 mod ex06_conjunctive_normal_form;
 mod ex07_sat;
 mod ex08_powerset;
+mod ex09_set_evaluation;
+mod ex10_curve;
+mod ex11_inverse;
 
 fn main() {
     // Bitwise operations
@@ -42,5 +45,15 @@ fn main() {
     println!(
         "powerset(&[1, 2, 3])={:?}",
         ex08_powerset::powerset(&[1, 2, 3])
-    )
+    );
+    println!(
+        "eval_set(\"AB&\", &[&[0,1,2], &[0,3,4]])={:?}",
+        ex09_set_evaluation::eval_set("AB&", &[&[0, 1, 2], &[0, 3, 4]])
+    );
+    let map_res = ex10_curve::map(5, 9);
+    println!("map([6, 9])={:?}", map_res);
+    println!(
+        "reverse_map(map_res)={:?}",
+        ex11_inverse::reverse_map(map_res)
+    );
 }

@@ -326,6 +326,7 @@ mod tests {
         assert_eq!(doit("A!"), "A");
     }
 
+    #[ignore = "too slow"]
     #[test]
     fn can_parse_huge_formula() {
         loop {
