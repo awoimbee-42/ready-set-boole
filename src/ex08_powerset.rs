@@ -4,7 +4,9 @@ pub fn powerset(set: &[i32]) -> Vec<Vec<i32>> {
     }
     let mut res = vec![];
 
-    for i in 0..2u64.pow(set.len() as u32) {
+    let limit = 1 << set.len(); // 2.pow(set.len())
+
+    for i in 0..limit {
         res.push(
             (0..set.len())
                 .filter(|j| (i & (1 << j)) != 0)
